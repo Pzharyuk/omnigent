@@ -312,6 +312,7 @@ from omnigent.stores.conversation_store import (
     ConversationNotFoundError,
     pinned_label_key,
 )
+from omnigent.stores.credential_store import CredentialStore
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import Host, HostStore
 from omnigent.stores.permission_store import PermissionStore
@@ -2375,6 +2376,7 @@ async def _run_managed_launch(
     host_registry: HostRegistry | None,
     tunnel_registry: TunnelRegistry | None,
     relaunch_host: Host | None = None,
+    credential_store: CredentialStore | None = None,
 ) -> None:
     """
     Provision a managed sandbox for a session in the background.
@@ -2423,6 +2425,8 @@ async def _run_managed_launch(
     :param relaunch_host: Existing managed host row to relaunch a new
         sandbox generation for, or ``None`` for a first launch (a
         fresh host identity is minted).
+    :param credential_store: The app's credential store, used to inject the
+        owner's ``GIT_TOKEN`` into the launch when connected, or ``None``.
     """
     managed = await _provision_managed_sandbox(
         session_id=session_id,
@@ -2432,6 +2436,7 @@ async def _run_managed_launch(
         tracker=tracker,
         host_store=host_store,
         relaunch_host=relaunch_host,
+        credential_store=credential_store,
     )
     if managed is None:
         return
@@ -2927,6 +2932,7 @@ def _kick_managed_relaunch(
             tracker=tracker,
             conversation_store=conversation_store,
             host_store=host_store,
+            credential_store=getattr(app_state, "credential_store", None),
             host_registry=getattr(app_state, "host_registry", None),
             tunnel_registry=getattr(app_state, "tunnel_registry", None),
             relaunch_host=host,
