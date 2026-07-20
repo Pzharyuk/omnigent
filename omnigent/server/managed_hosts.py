@@ -2114,6 +2114,7 @@ async def launch_managed_host(
     host_store: HostStore,
     repo: RepoWorkspace | None = None,
     on_stage: Callable[[str], None] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ManagedHostLaunch:
     """
     Provision a sandbox, start a host in it, and wait until it registers.
@@ -2177,6 +2178,7 @@ async def launch_managed_host(
         sandbox_id=sandbox_id,
         repo=repo,
         on_stage=on_stage,
+        extra_env=extra_env,
     )
     return ManagedHostLaunch(host_id=host_id, workspace=workspace)
 
@@ -2188,6 +2190,7 @@ async def relaunch_managed_host(
     host_store: HostStore,
     repo: RepoWorkspace | None = None,
     on_stage: Callable[[str], None] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> ManagedHostLaunch:
     """
     Provision a NEW sandbox generation for an existing managed host.
@@ -2254,6 +2257,7 @@ async def relaunch_managed_host(
         repo=repo,
         on_stage=on_stage,
         keep_host_on_failure=True,
+        extra_env=extra_env,
     )
     return ManagedHostLaunch(host_id=host.host_id, workspace=workspace)
 
@@ -2271,59 +2275,27 @@ async def _start_sandbox_host(
     repo_name: str | None,
     host_config: dict[str, object] | None,
     on_stage: Callable[[str], None] | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     """Start a host without sending absent optional arguments to legacy launchers."""
-    if host_config is None and on_stage is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repo_url=repo_url,
-            repo_branch=repo_branch,
-            repo_name=repo_name,
-        )
-    if host_config is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repo_url=repo_url,
-            repo_branch=repo_branch,
-            repo_name=repo_name,
-            on_stage=on_stage,
-        )
-    if on_stage is None:
-        return await asyncio.to_thread(
-            launcher.start_host,
-            sandbox_id,
-            token=token,
-            host_id=host_id,
-            host_name=host_name,
-            server_url=server_url,
-            repo_url=repo_url,
-            repo_branch=repo_branch,
-            repo_name=repo_name,
-            host_config=host_config,
-        )
-    return await asyncio.to_thread(
-        launcher.start_host,
-        sandbox_id,
-        token=token,
-        host_id=host_id,
-        host_name=host_name,
-        server_url=server_url,
-        repo_url=repo_url,
-        repo_branch=repo_branch,
-        repo_name=repo_name,
-        host_config=host_config,
-        on_stage=on_stage,
-    )
+    kwargs: dict[str, object] = {
+        "token": token,
+        "host_id": host_id,
+        "host_name": host_name,
+        "server_url": server_url,
+        "repo_url": repo_url,
+        "repo_branch": repo_branch,
+        "repo_name": repo_name,
+    }
+    # Omitted entirely when unset: a deployment-injected launcher predating
+    # one of these parameters must keep launching.
+    if host_config is not None:
+        kwargs["host_config"] = host_config
+    if on_stage is not None:
+        kwargs["on_stage"] = on_stage
+    if extra_env is not None:
+        kwargs["extra_env"] = extra_env
+    return await asyncio.to_thread(launcher.start_host, sandbox_id, **kwargs)
 
 
 async def _arm_and_start_host(
@@ -2338,6 +2310,7 @@ async def _arm_and_start_host(
     repo: RepoWorkspace | None = None,
     on_stage: Callable[[str], None] | None = None,
     keep_host_on_failure: bool = False,
+    extra_env: dict[str, str] | None = None,
 ) -> str:
     """
     Arm the credential, start the in-sandbox host, and await its
@@ -2402,6 +2375,7 @@ async def _arm_and_start_host(
             repo_name=repo.repo_name if repo is not None else None,
             host_config=config.host_config,
             on_stage=on_stage,
+            extra_env=extra_env,
         )
         await _wait_for_host_online(host_store, host_id)
     except Exception as exc:
