@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import * as SelectPrimitive from "radix-ui/select";
+import { Select as SelectPrimitive } from "radix-ui";
 
 import { getEmbedRoot } from "@/lib/host";
 import { cn } from "@/lib/utils";

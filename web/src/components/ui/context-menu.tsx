@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as ContextMenuPrimitive from "radix-ui/context-menu";
+import { ContextMenu as ContextMenuPrimitive } from "radix-ui";
 
 import { getEmbedRoot } from "@/lib/host";
 import { cn } from "@/lib/utils";

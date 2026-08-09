@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as HoverCardPrimitive from "radix-ui/hover-card";
+import { HoverCard as HoverCardPrimitive } from "radix-ui";
 
 import { getEmbedRoot } from "@/lib/host";
 import { cn } from "@/lib/utils";

@@ -1,5 +1,5 @@
 import * as React from "react";
-import * as DialogPrimitive from "radix-ui/dialog";
+import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { getEmbedRoot } from "@/lib/host";
 import { isIOSShell } from "@/lib/nativeBridge";
