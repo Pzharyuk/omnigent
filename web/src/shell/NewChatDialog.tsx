@@ -5714,6 +5714,11 @@ export function NewChatLandingScreen() {
                           setSandboxRepoBranch("");
                         }}
                         placeholder="https://github.com/org/repo"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                        name="omnigent-sandbox-repo-url"
                         className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none transition-colors focus-visible:border-ring"
                         data-testid="new-chat-landing-repo-input"
                       />
