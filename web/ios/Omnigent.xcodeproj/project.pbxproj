@@ -87,6 +87,7 @@
 		A10000000000000000000010 /* Info-Release.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info-Release.plist"; sourceTree = "<group>"; };
 		A10000000000000000000013 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A10000000000000000000018 /* OidcLoginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OidcLoginManager.swift; sourceTree = "<group>"; };
+		A10000000000000000000017 /* Omnigent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Omnigent.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000001 /* ServerURLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerURLTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* WorkspaceURLExpanderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceURLExpanderTests.swift; sourceTree = "<group>"; };
@@ -175,6 +176,7 @@
 				A10000000000000000000018 /* OidcLoginManager.swift */,
 				A1000000000000000000000D /* Assets.xcassets */,
 				A10000000000000000000013 /* PrivacyInfo.xcprivacy */,
+				A10000000000000000000017 /* Omnigent.entitlements */,
 				A1000000000000000000000F /* Info-Debug.plist */,
 				A10000000000000000000010 /* Info-Release.plist */,
 			);
@@ -535,6 +537,7 @@
 				APP_DISPLAY_NAME = Omnigent;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Omnigent/Omnigent.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -566,6 +569,7 @@
 				APP_DISPLAY_NAME = Omnigent;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Omnigent/Omnigent.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
