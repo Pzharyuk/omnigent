@@ -162,6 +162,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useOmnigentAnalytics } from "@/lib/analytics";
 import { isCurrentServerLocal } from "@/lib/serverOrigin";
+import { listGithubRepos, type GithubRepoInfo } from "@/lib/credentialsApi";
 import {
   isFullySupportedNativeCodingAgent,
   isNativeCodingAgent,
