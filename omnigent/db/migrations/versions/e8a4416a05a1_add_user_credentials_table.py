@@ -1,7 +1,7 @@
 """Add the user_credentials table.
 
 Revision ID: e8a4416a05a1
-Revises: e5d9bc8ac650
+Revises: f7a8b9c0d1e2
 Create Date: 2026-07-20 00:00:00.000000
 
 One row per (workspace, user, provider): an external-service credential
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "e8a4416a05a1"
-down_revision: str | None = "e5d9bc8ac650"
+down_revision: str | None = "f7a8b9c0d1e2"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
