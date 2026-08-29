@@ -2741,7 +2741,11 @@ async def _start_sandbox_host(
         kwargs["on_stage"] = on_stage
     if extra_env is not None:
         kwargs["extra_env"] = extra_env
-    return await asyncio.to_thread(launcher.start_host, sandbox_id, **kwargs)
+    # Cast for the same reason the classified path above does: the kwargs set is
+    # assembled at runtime, so the splat is what the static signature cannot
+    # express. Every key is a declared `start_host` parameter.
+    start_legacy = cast(Callable[..., str], launcher.start_host)
+    return await asyncio.to_thread(start_legacy, sandbox_id, **kwargs)
 
 
 async def _arm_and_start_host(

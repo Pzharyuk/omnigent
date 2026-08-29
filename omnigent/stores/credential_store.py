@@ -17,9 +17,10 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from typing import cast
 
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import Engine, select
+from sqlalchemy import CursorResult, Engine, select
 from sqlalchemy import delete as sql_delete
 
 from omnigent.db.db_models import SqlUserCredential, current_workspace_id
@@ -146,12 +147,15 @@ class CredentialStore:
     def delete(self, user_id: str, provider: str) -> bool:
         """Remove the credential; ``True`` when a row was deleted."""
         with self._session() as session:
-            result = session.execute(
-                sql_delete(SqlUserCredential).where(
-                    SqlUserCredential.workspace_id == current_workspace_id(),
-                    SqlUserCredential.user_id == user_id,
-                    SqlUserCredential.provider == provider,
-                )
+            result = cast(
+                CursorResult[tuple[object]],
+                session.execute(
+                    sql_delete(SqlUserCredential).where(
+                        SqlUserCredential.workspace_id == current_workspace_id(),
+                        SqlUserCredential.user_id == user_id,
+                        SqlUserCredential.provider == provider,
+                    )
+                ),
             )
             session.commit()
             return bool(result.rowcount)
