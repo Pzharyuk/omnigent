@@ -1140,10 +1140,10 @@ def test_token_secret_carries_extra_env() -> None:
     assert manifest["stringData"][HOST_TOKEN_ENV_VAR] == _TOKEN
 
 
-def test_pod_manifest_references_extra_env_keys_in_both_containers() -> None:
+def test_job_manifest_references_extra_env_keys_in_both_containers() -> None:
     """Extra keys land as secretKeyRef env in the host AND init containers."""
-    manifest = build_pod_manifest(**_MANIFEST_KW, extra_env_keys=["GIT_TOKEN"])
-    spec = manifest["spec"]
+    manifest = build_job_manifest(**_MANIFEST_KW, extra_env_keys=["GIT_TOKEN"])
+    spec = _pod_spec(manifest)
     expected = {
         "name": "GIT_TOKEN",
         "valueFrom": {
@@ -1157,9 +1157,9 @@ def test_pod_manifest_references_extra_env_keys_in_both_containers() -> None:
     assert expected in spec["initContainers"][0]["env"]
 
 
-def test_pod_manifest_never_inlines_extra_env_values() -> None:
-    """The value only ever lives in the Secret — never in the Pod spec."""
-    manifest = build_pod_manifest(**_MANIFEST_KW, extra_env_keys=["GIT_TOKEN"])
+def test_job_manifest_never_inlines_extra_env_values() -> None:
+    """The value only ever lives in the Secret — never in the Job spec."""
+    manifest = build_job_manifest(**_MANIFEST_KW, extra_env_keys=["GIT_TOKEN"])
     assert "gho_" not in json.dumps(manifest)
 
 
