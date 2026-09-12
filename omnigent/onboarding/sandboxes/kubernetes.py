@@ -547,26 +547,27 @@ def _render_workspace_prep_command(
         + " || true\n"
     )
     if repo_url is not None and clone_dir is not None:
-        # Prefer the owner's per-user credential for the clone: when they've
-        # connected GitHub, wire the broker as the sole github.com helper so a
-        # private clone authenticates as *them*. When they haven't connected this
-        # is a no-op that leaves the image's shared ``$GIT_TOKEN`` helper in
-        # place; ``|| true`` keeps a broker hiccup from failing the clone (it
-        # then falls back to ``$GIT_TOKEN``). Needs OMNIGENT_HOST_TOKEN in-env.
+        # Prefer the owner's GIT_TOKEN (per-launch Secret) for the clone.
+        # The credential broker 404s here: the host is not registered yet,
+        # and installing it as the sole helper hides the image GIT_TOKEN helper.
         wire = (
             "from omnigent.git_credential_github import configure_clone_credentials; "
             f"configure_clone_credentials({server_url!r}, {host_id!r})"
         )
-        script += f"python3 -c {shlex.quote(wire)} || true\n"
-        # ``--`` separates options from the (already-validated) URL so it can
-        # never be parsed as a flag; --single-branch keeps branch-pinned clones
-        # fast. Auth: the broker (above, if connected) else the image's GIT_TOKEN.
         branch = (
             f"--branch {shlex.quote(repo_branch)} --single-branch "
             if repo_branch is not None
             else ""
         )
-        script += f"git clone {branch}-- {shlex.quote(repo_url)} {shlex.quote(clone_dir)}\n"
+        clone = f"git clone {branch}-- {shlex.quote(repo_url)} {shlex.quote(clone_dir)}"
+        script += (
+            f'if [ -n "${{GIT_TOKEN:-}}" ]; then\n'
+            f"  {clone}\n"
+            f"else\n"
+            f"  python3 -c {shlex.quote(wire)} || true\n"
+            f"  {clone}\n"
+            f"fi\n"
+        )
     if host_config is not None:
         script += render_host_config_write_command(host_config) + "\n"
     return ["bash", "-lc", script]
