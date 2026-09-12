@@ -5366,7 +5366,9 @@ async def _owner_credential_env(
     if grok is not None:
         session = credential_store.decrypt_token(grok)
         if session:
-            env["GROK_AUTH_JSON"] = session
+            from omnigent.onboarding.xai_oauth import normalize_grok_auth_json
+
+            env["GROK_AUTH_JSON"] = normalize_grok_auth_json(session)
         else:
             _logger.warning(
                 "grok credential for %s is undecryptable — launching without it", owner

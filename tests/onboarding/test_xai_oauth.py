@@ -13,6 +13,7 @@ from omnigent.onboarding.xai_oauth import (
     XAI_ISSUER,
     build_grok_auth_json,
     email_from_access_token,
+    normalize_grok_auth_json,
     request_device_code,
     request_tokens,
 )
@@ -52,7 +53,30 @@ def test_build_grok_auth_json_uses_cli_scope_key() -> None:
     assert entry["email"] == "alice@x.ai"
     assert entry["oidc_issuer"] == XAI_ISSUER
     assert entry["oidc_client_id"] == XAI_CLIENT_ID
-    assert entry["expires_at"] == 1_700_000_000 + 3600
+    assert entry["create_time"] == "2023-11-14T22:13:20.000000Z"
+    assert entry["expires_at"] == "2023-11-14T23:13:20.000000Z"
+
+
+def test_normalize_grok_auth_json_converts_unix_timestamps() -> None:
+    key = f"{XAI_ISSUER}::{XAI_CLIENT_ID}"
+    raw = json.dumps(
+        {
+            key: {
+                "key": "tok",
+                "create_time": 1_700_000_000,
+                "expires_at": 1_700_003_600,
+            }
+        }
+    )
+    data = json.loads(normalize_grok_auth_json(raw))
+    assert data[key]["create_time"] == "2023-11-14T22:13:20.000000Z"
+    assert data[key]["expires_at"] == "2023-11-14T23:13:20.000000Z"
+
+
+def test_normalize_grok_auth_json_leaves_rfc3339_and_non_json() -> None:
+    rfc = '{"k":{"expires_at":"2026-09-13T01:38:00.909413Z"}}'
+    assert normalize_grok_auth_json(rfc) == rfc
+    assert normalize_grok_auth_json("not-json") == "not-json"
 
 
 @pytest.mark.asyncio

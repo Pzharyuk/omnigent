@@ -18,6 +18,9 @@ def write_grok_auth_json_from_env() -> None:
     raw = os.environ.get("GROK_AUTH_JSON", "").strip()
     if not raw:
         return
+    from omnigent.onboarding.xai_oauth import normalize_grok_auth_json
+
+    raw = normalize_grok_auth_json(raw)
     home = os.environ.get("HOME") or "/home/omnigent"
     dest = Path(home) / ".grok" / "auth.json"
     dest.parent.mkdir(parents=True, exist_ok=True)

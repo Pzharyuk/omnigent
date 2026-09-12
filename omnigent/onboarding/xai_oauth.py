@@ -13,6 +13,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Literal
 from urllib.parse import urlencode
 
@@ -64,6 +65,46 @@ def email_from_access_token(access_token: str) -> str:
     return "grok"
 
 
+def _rfc3339(ts: int | float | str) -> str:
+    """Format a unix timestamp the way grok CLI 1.0+ deserializes ``auth.json``.
+
+    Grok rejects integer ``expires_at``/``create_time`` (``invalid type:
+    integer, expected an RFC 3339 formatted date and time string``) and
+    then reports ACP ``Authentication required``.
+    """
+    if isinstance(ts, str) and "T" in ts:
+        return ts
+    return datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%S.%fZ"
+    )
+
+
+def normalize_grok_auth_json(raw: str) -> str:
+    """Rewrite unix ``create_time``/``expires_at`` to RFC 3339 strings.
+
+    Already-correct blobs and non-JSON values are returned unchanged so
+    a stored session from before this fix still injects into sandboxes.
+    """
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    if not isinstance(data, dict):
+        return raw
+    changed = False
+    for entry in data.values():
+        if not isinstance(entry, dict):
+            continue
+        for field in ("create_time", "expires_at"):
+            value = entry.get(field)
+            if isinstance(value, (int, float)):
+                entry[field] = _rfc3339(value)
+                changed = True
+    if not changed:
+        return raw
+    return json.dumps(data, separators=(",", ":"))
+
+
 def build_grok_auth_json(
     *,
     access_token: str,
@@ -79,8 +120,8 @@ def build_grok_auth_json(
         key: {
             "key": access_token,
             "auth_mode": "oidc",
-            "create_time": minted,
-            "expires_at": minted + int(expires_in),
+            "create_time": _rfc3339(minted),
+            "expires_at": _rfc3339(minted + int(expires_in)),
             "refresh_token": refresh_token,
             "oidc_issuer": XAI_ISSUER,
             "oidc_client_id": XAI_CLIENT_ID,

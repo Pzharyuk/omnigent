@@ -74,6 +74,16 @@ async def test_grok_session_injected(monkeypatch, credential_store) -> None:
     assert captured["extra_env"] == {"GROK_AUTH_JSON": blob}
 
 
+async def test_grok_session_unix_timestamps_normalized(monkeypatch, credential_store) -> None:
+    blob = '{"https://auth.x.ai::cli":{"key":"atk","create_time":1700000000,"expires_at":1700003600}}'
+    credential_store.upsert(_OWNER, "grok", token=blob, login="alice@x.ai", scopes="openid")
+    captured = await _provision(monkeypatch, credential_store)
+    injected = captured["extra_env"]["GROK_AUTH_JSON"]
+    assert "1700000000" not in injected
+    assert "2023-11-14T22:13:20.000000Z" in injected
+    assert "2023-11-14T23:13:20.000000Z" in injected
+
+
 async def test_github_and_grok_injected_together(monkeypatch, credential_store) -> None:
     credential_store.upsert(_OWNER, "github", token="gho_x", login="alice", scopes="repo")
     credential_store.upsert(_OWNER, "grok", token="{}", login="alice@x.ai", scopes="")
