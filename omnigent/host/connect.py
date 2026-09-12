@@ -684,6 +684,7 @@ _BASE_HARNESS_CREDENTIAL_ENV_VARS: frozenset[str] = frozenset(
         "GEMINI_API_KEY",
         "GIT_TOKEN",
         "GIT_USERNAME",
+        "XAI_API_KEY",
     }
 )
 HARNESS_CREDENTIAL_ENV_VARS: frozenset[str] = frozenset(
