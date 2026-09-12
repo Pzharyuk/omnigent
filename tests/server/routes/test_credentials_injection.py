@@ -8,7 +8,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from omnigent.server.routes import sessions as sessions_routes
-from omnigent.stores.credential_store import CredentialStore
+from omnigent.stores.user_credential_store import CredentialStore
 
 _OWNER = "alice@example.com"
 

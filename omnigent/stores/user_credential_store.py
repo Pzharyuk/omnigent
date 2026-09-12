@@ -23,7 +23,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy import delete as sql_delete
 
 from omnigent.db.db_models import SqlUserCredential, current_workspace_id
-from omnigent.db.utils import get_or_create_engine, make_managed_session_maker, now_epoch
+from omnigent.db.utils import get_or_create_engine, make_named_managed_session_maker, now_epoch
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +80,13 @@ class CredentialStore:
 
     def __init__(self, storage_location: str) -> None:
         self._engine: Engine = get_or_create_engine(storage_location)
-        self._session = make_managed_session_maker(self._engine)
+        self._session = make_named_managed_session_maker(
+            self._engine, query_name_prefix="omnigent.user_credential_store"
+        )
 
     def get(self, user_id: str, provider: str) -> UserCredential | None:
         """Return the user's credential for *provider*, or ``None``."""
-        with self._session() as session:
+        with self._session("get_user_credential") as session:
             row = session.execute(
                 select(SqlUserCredential).where(
                     SqlUserCredential.workspace_id == current_workspace_id(),
@@ -116,7 +118,7 @@ class CredentialStore:
             raise RuntimeError(f"{_KEY_ENV} is not configured; refusing to store a credential")
         token_encrypted = codec.encrypt(token.encode()).decode()
         now = now_epoch()
-        with self._session() as session:
+        with self._session("upsert_user_credential") as session:
             row = session.execute(
                 select(SqlUserCredential).where(
                     SqlUserCredential.workspace_id == current_workspace_id(),
@@ -141,11 +143,10 @@ class CredentialStore:
                 row.login = login
                 row.scopes = scopes
                 row.updated_at = now
-            session.commit()
 
     def delete(self, user_id: str, provider: str) -> bool:
         """Remove the credential; ``True`` when a row was deleted."""
-        with self._session() as session:
+        with self._session("delete_user_credential") as session:
             result = session.execute(
                 sql_delete(SqlUserCredential).where(
                     SqlUserCredential.workspace_id == current_workspace_id(),
@@ -153,7 +154,6 @@ class CredentialStore:
                     SqlUserCredential.provider == provider,
                 )
             )
-            session.commit()
             return bool(result.rowcount)
 
     def decrypt_token(self, cred: UserCredential) -> str | None:

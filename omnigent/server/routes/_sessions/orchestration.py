@@ -345,11 +345,11 @@ from omnigent.stores.conversation_store import (
     NameAlreadyExistsError,
     pinned_label_key,
 )
-from omnigent.stores.credential_store import CredentialStore
 from omnigent.stores.file_store import FileStore
 from omnigent.stores.host_store import Host, HostStore, host_is_live
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.project_store import ProjectStore
+from omnigent.stores.user_credential_store import CredentialStore
 from omnigent.telemetry import emit as _tel_emit
 from omnigent.telemetry.events import NativeSessionUsageEvent as _TelNativeSessionUsageEvent
 from omnigent.telemetry.events import SessionCreatedEvent as _TelSessionCreatedEvent

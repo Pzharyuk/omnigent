@@ -113,12 +113,12 @@ from omnigent.stores import (
 )
 from omnigent.stores.comment_store import CommentStore
 from omnigent.stores.conversation_store import SessionConnectivity, runner_seen_is_fresh
-from omnigent.stores.credential_store import CredentialStore
 from omnigent.stores.host_store import HostStore
 from omnigent.stores.permission_store import PermissionStore
 from omnigent.stores.policy_store import PolicyStore
 from omnigent.stores.project_store import ProjectStore
 from omnigent.stores.scheduled_task_store import ScheduledTaskStore
+from omnigent.stores.user_credential_store import CredentialStore
 
 _logger = logging.getLogger(__name__)
 

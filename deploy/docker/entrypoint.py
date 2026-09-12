@@ -391,7 +391,7 @@ def build_app(resolved_config: _ResolvedConfig | None = None) -> _BuiltApp:
     policy_store = SqlAlchemyPolicyStore(database_url)
     scheduled_task_store = SqlAlchemyScheduledTaskStore(database_url)
     project_store = SqlAlchemyProjectStore(database_url)
-    from omnigent.stores.credential_store import CredentialStore
+    from omnigent.stores.user_credential_store import CredentialStore
 
     credential_store = CredentialStore(database_url)
     # Fail startup loud on a malformed `sandbox:` section (an operator

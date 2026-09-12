@@ -281,9 +281,9 @@ from omnigent.stores.conversation_store import (
     ConversationNotFoundError,
     NameAlreadyExistsError,
 )
-from omnigent.stores.credential_store import CredentialStore
 from omnigent.stores.host_store import Host, HostStore
 from omnigent.stores.permission_store import PermissionStore
+from omnigent.stores.user_credential_store import CredentialStore
 from omnigent.util.cost_plan import (
     COST_CONTROL_LABEL_NAMESPACE,
     reserved_cost_control_keys,

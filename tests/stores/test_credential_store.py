@@ -3,7 +3,7 @@
 import pytest
 from cryptography.fernet import Fernet
 
-from omnigent.stores.credential_store import (
+from omnigent.stores.user_credential_store import (
     CredentialStore,
     credential_encryption_enabled,
 )

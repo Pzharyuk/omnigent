@@ -34,7 +34,7 @@ from fastapi.responses import RedirectResponse
 from omnigent.errors import ErrorCode, OmnigentError
 from omnigent.server.auth import AuthProvider
 from omnigent.server.routes._auth_helpers import require_user
-from omnigent.stores.credential_store import (
+from omnigent.stores.user_credential_store import (
     CredentialStore,
     credential_encryption_enabled,
 )

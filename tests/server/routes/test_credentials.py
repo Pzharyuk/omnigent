@@ -23,8 +23,8 @@ from omnigent.stores.comment_store.sqlalchemy_store import SqlAlchemyCommentStor
 from omnigent.stores.conversation_store.sqlalchemy_store import (
     SqlAlchemyConversationStore,
 )
-from omnigent.stores.credential_store import CredentialStore
 from omnigent.stores.file_store.sqlalchemy_store import SqlAlchemyFileStore
+from omnigent.stores.user_credential_store import CredentialStore
 
 _USER = "alice@example.com"
 

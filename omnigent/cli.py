@@ -4318,6 +4318,10 @@ def server(
 
             github_store = GithubConnectionStore(db_uri, cipher)
 
+    from omnigent.stores.user_credential_store import CredentialStore
+
+    credential_store = CredentialStore(db_uri)
+
     # Accounts mode ergonomics: when accounts mode is selected
     # (OMNIGENT_AUTH_ENABLED=1 without OIDC config, or an explicit
     # OMNIGENT_AUTH_PROVIDER=accounts), supply sensible defaults
@@ -4387,6 +4391,7 @@ def server(
         sandbox_config=sandbox_config,
         github_config=github_config,
         github_store=github_store,
+        credential_store=credential_store,
         server_config=title_server_config,
     )
 
