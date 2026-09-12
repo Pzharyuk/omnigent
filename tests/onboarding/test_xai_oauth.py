@@ -55,6 +55,31 @@ def test_build_grok_auth_json_uses_cli_scope_key() -> None:
     assert entry["oidc_client_id"] == XAI_CLIENT_ID
     assert entry["create_time"] == "2023-11-14T22:13:20.000000Z"
     assert entry["expires_at"] == "2023-11-14T23:13:20.000000Z"
+    assert entry["user_id"] == "alice@x.ai"
+
+
+def test_build_grok_auth_json_user_id_from_jwt_sub() -> None:
+    token = _jwt(
+        {
+            "sub": "c6b18d8f-aa81-41f2-9663-3714caf937d6",
+            "principal_id": "c6b18d8f-aa81-41f2-9663-3714caf937d6",
+            "principal_type": "User",
+            "team_id": "6e92d56d-3f82-4a45-8f4f-93569956c3a7",
+        }
+    )
+    data = json.loads(
+        build_grok_auth_json(
+            access_token=token,
+            refresh_token="ref",
+            expires_in=3600,
+            email="alice@x.ai",
+            now=1_700_000_000,
+        )
+    )
+    entry = data[f"{XAI_ISSUER}::{XAI_CLIENT_ID}"]
+    assert entry["user_id"] == "c6b18d8f-aa81-41f2-9663-3714caf937d6"
+    assert entry["principal_type"] == "User"
+    assert entry["team_id"] == "6e92d56d-3f82-4a45-8f4f-93569956c3a7"
 
 
 def test_normalize_grok_auth_json_converts_unix_timestamps() -> None:
@@ -74,9 +99,16 @@ def test_normalize_grok_auth_json_converts_unix_timestamps() -> None:
 
 
 def test_normalize_grok_auth_json_leaves_rfc3339_and_non_json() -> None:
-    rfc = '{"k":{"expires_at":"2026-09-13T01:38:00.909413Z"}}'
+    rfc = '{"k":{"expires_at":"2026-09-13T01:38:00.909413Z","user_id":"u1"}}'
     assert normalize_grok_auth_json(rfc) == rfc
     assert normalize_grok_auth_json("not-json") == "not-json"
+
+
+def test_normalize_grok_auth_json_fills_user_id_from_jwt() -> None:
+    token = _jwt({"sub": "user-from-sub"})
+    raw = json.dumps({f"{XAI_ISSUER}::{XAI_CLIENT_ID}": {"key": token, "email": "a@x.ai"}})
+    data = json.loads(normalize_grok_auth_json(raw))
+    assert data[f"{XAI_ISSUER}::{XAI_CLIENT_ID}"]["user_id"] == "user-from-sub"
 
 
 @pytest.mark.asyncio

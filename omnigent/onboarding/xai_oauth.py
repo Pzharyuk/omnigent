@@ -51,18 +51,43 @@ class TokenPayload:
     expires_in: int
 
 
-def email_from_access_token(access_token: str) -> str:
-    """Best-effort email from a JWT access token; ``grok`` when unknown."""
+def _jwt_payload(access_token: str) -> dict[str, object]:
+    """Decode a JWT payload without verifying the signature."""
     try:
         payload = access_token.split(".")[1]
         padded = payload + "=" * (-len(payload) % 4)
         data = json.loads(base64.urlsafe_b64decode(padded.encode()))
-        email = data.get("email") or data.get("preferred_username")
-        if isinstance(email, str) and email.strip():
-            return email.strip()
+        return data if isinstance(data, dict) else {}
     except (IndexError, ValueError, json.JSONDecodeError, UnicodeDecodeError):
-        pass
+        return {}
+
+
+def email_from_access_token(access_token: str) -> str:
+    """Best-effort email from a JWT access token; ``grok`` when unknown."""
+    data = _jwt_payload(access_token)
+    email = data.get("email") or data.get("preferred_username")
+    if isinstance(email, str) and email.strip():
+        return email.strip()
     return "grok"
+
+
+def _identity_from_access_token(access_token: str) -> dict[str, str]:
+    """CLI-required identity fields from the access-token JWT.
+
+    Grok 1.0.30's ``auth.json`` deserializer requires ``user_id`` (the
+    token ``sub``). ``principal_id`` / ``principal_type`` / ``team_id``
+    are copied when present so the blob matches ``grok login``.
+    """
+    data = _jwt_payload(access_token)
+    out: dict[str, str] = {}
+    sub = data.get("sub")
+    if isinstance(sub, str) and sub.strip():
+        out["user_id"] = sub.strip()
+    for field in ("principal_id", "principal_type", "team_id"):
+        value = data.get(field)
+        if isinstance(value, str) and value.strip():
+            out[field] = value.strip()
+    return out
 
 
 def _rfc3339(ts: int | float | str) -> str:
@@ -100,6 +125,18 @@ def normalize_grok_auth_json(raw: str) -> str:
             if isinstance(value, (int, float)):
                 entry[field] = _rfc3339(value)
                 changed = True
+        if not entry.get("user_id"):
+            token = entry.get("key")
+            if isinstance(token, str):
+                identity = _identity_from_access_token(token)
+                if identity:
+                    entry.update(identity)
+                    changed = True
+            if not entry.get("user_id"):
+                email = entry.get("email")
+                if isinstance(email, str) and email.strip():
+                    entry["user_id"] = email.strip()
+                    changed = True
     if not changed:
         return raw
     return json.dumps(data, separators=(",", ":"))
@@ -116,19 +153,21 @@ def build_grok_auth_json(
     """Serialize a grok CLI ``auth.json`` for the public Grok CLI client."""
     minted = int(now if now is not None else time.time())
     key = f"{XAI_ISSUER}::{XAI_CLIENT_ID}"
-    blob = {
-        key: {
-            "key": access_token,
-            "auth_mode": "oidc",
-            "create_time": _rfc3339(minted),
-            "expires_at": _rfc3339(minted + int(expires_in)),
-            "refresh_token": refresh_token,
-            "oidc_issuer": XAI_ISSUER,
-            "oidc_client_id": XAI_CLIENT_ID,
-            "email": email,
-        }
+    entry: dict[str, str] = {
+        "key": access_token,
+        "auth_mode": "oidc",
+        "create_time": _rfc3339(minted),
+        "expires_at": _rfc3339(minted + int(expires_in)),
+        "refresh_token": refresh_token,
+        "oidc_issuer": XAI_ISSUER,
+        "oidc_client_id": XAI_CLIENT_ID,
+        "email": email,
+        "user_id": email,
     }
-    return json.dumps(blob, separators=(",", ":"))
+    entry.update(_identity_from_access_token(access_token))
+    if not entry.get("user_id"):
+        entry["user_id"] = email
+    return json.dumps({key: entry}, separators=(",", ":"))
 
 
 async def request_device_code() -> DeviceCodeStart:
