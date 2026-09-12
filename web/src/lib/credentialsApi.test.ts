@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   connectGithub,
+  connectGrok,
   disconnectGithub,
+  disconnectGrok,
   listCredentials,
   listGithubRepos,
+  pollGrok,
 } from "./credentialsApi";
 import { authenticatedFetch } from "./identity";
 
@@ -177,5 +180,55 @@ describe("listGithubRepos", () => {
       error: "Could not reach the server. Check your connection.",
       status: 0,
     });
+  });
+});
+
+describe("connectGrok", () => {
+  it("POSTs /v1/credentials/grok/connect and returns the device code", async () => {
+    mockAuthenticatedFetch.mockResolvedValueOnce(
+      mockJsonResponse({
+        user_code: "ABCD-1234",
+        verification_uri: "https://auth.x.ai/device",
+        verification_uri_complete: null,
+        expires_in: 600,
+        interval: 5,
+      }),
+    );
+    const result = await connectGrok();
+    expect(mockAuthenticatedFetch).toHaveBeenCalledWith("/v1/credentials/grok/connect", {
+      method: "POST",
+    });
+    expect(result).toEqual({
+      ok: true,
+      user_code: "ABCD-1234",
+      verification_uri: "https://auth.x.ai/device",
+      verification_uri_complete: null,
+      expires_in: 600,
+      interval: 5,
+    });
+  });
+});
+
+describe("pollGrok", () => {
+  it("returns connected with login", async () => {
+    mockAuthenticatedFetch.mockResolvedValueOnce(
+      mockJsonResponse({ status: "connected", login: "alice@x.ai" }),
+    );
+    const result = await pollGrok();
+    expect(mockAuthenticatedFetch).toHaveBeenCalledWith("/v1/credentials/grok/poll", {
+      method: "POST",
+    });
+    expect(result).toEqual({ ok: true, status: "connected", login: "alice@x.ai" });
+  });
+});
+
+describe("disconnectGrok", () => {
+  it("DELETEs /v1/credentials/grok", async () => {
+    mockAuthenticatedFetch.mockResolvedValueOnce(mockJsonResponse({ ok: true }));
+    const result = await disconnectGrok();
+    expect(mockAuthenticatedFetch).toHaveBeenCalledWith("/v1/credentials/grok", {
+      method: "DELETE",
+    });
+    expect(result).toEqual({ ok: true });
   });
 });

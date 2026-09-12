@@ -25,6 +25,8 @@ export interface CredentialsList {
   credentials: CredentialInfo[];
   /** Whether the deployment has the GitHub OAuth App + encryption key configured. */
   enabled: boolean;
+  /** Whether Grok device-code login is available (encryption key configured). */
+  grok_enabled?: boolean;
 }
 
 export interface CredentialsFailure {
@@ -45,6 +47,20 @@ export interface CredentialsFailure {
 export type CredentialsListResult = CredentialsList | CredentialsFailure;
 export type ConnectResult = { ok: true; authorize_url: string } | CredentialsFailure;
 export type DisconnectResult = { ok: true } | CredentialsFailure;
+export type GrokConnectResult =
+  | {
+      ok: true;
+      user_code: string;
+      verification_uri: string;
+      verification_uri_complete: string | null;
+      expires_in: number;
+      interval: number;
+    }
+  | CredentialsFailure;
+export type GrokPollResult =
+  | { ok: true; status: "pending" | "expired" | "denied" | "error" }
+  | { ok: true; status: "connected"; login: string }
+  | CredentialsFailure;
 
 const NETWORK_FAILURE: CredentialsFailure = {
   ok: false,
@@ -125,6 +141,54 @@ export interface GithubRepoInfo {
 }
 
 export type GithubReposResult = { ok: true; repos: GithubRepoInfo[] } | CredentialsFailure;
+
+/** POST /v1/credentials/grok/connect — start xAI device-code login. */
+export async function connectGrok(): Promise<GrokConnectResult> {
+  let res: Response;
+  try {
+    res = await authenticatedFetch("/v1/credentials/grok/connect", { method: "POST" });
+  } catch {
+    return NETWORK_FAILURE;
+  }
+  if (res.ok) {
+    const data = (await res.json()) as Omit<Extract<GrokConnectResult, { ok: true }>, "ok">;
+    return { ok: true, ...data };
+  }
+  return failureFrom(res, "Could not start the Grok connection.");
+}
+
+/** POST /v1/credentials/grok/poll — one poll of the in-flight device login. */
+export async function pollGrok(): Promise<GrokPollResult> {
+  let res: Response;
+  try {
+    res = await authenticatedFetch("/v1/credentials/grok/poll", { method: "POST" });
+  } catch {
+    return NETWORK_FAILURE;
+  }
+  if (res.ok) {
+    const data = (await res.json()) as { status: string; login?: string };
+    if (data.status === "connected") {
+      return { ok: true, status: "connected", login: data.login ?? "grok" };
+    }
+    return {
+      ok: true,
+      status: (data.status as "pending" | "expired" | "denied" | "error") ?? "error",
+    };
+  }
+  return failureFrom(res, "Could not check the Grok connection.");
+}
+
+/** DELETE /v1/credentials/grok — disconnect Grok. */
+export async function disconnectGrok(): Promise<DisconnectResult> {
+  let res: Response;
+  try {
+    res = await authenticatedFetch("/v1/credentials/grok", { method: "DELETE" });
+  } catch {
+    return NETWORK_FAILURE;
+  }
+  if (res.ok) return { ok: true };
+  return failureFrom(res, "Could not disconnect Grok.");
+}
 
 /** GET /v1/credentials/github/repos — the caller's accessible GitHub repos. */
 export async function listGithubRepos(): Promise<GithubReposResult> {

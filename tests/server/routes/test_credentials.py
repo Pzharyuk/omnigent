@@ -39,6 +39,13 @@ class _StubAuth(AuthProvider):
         return self._user_id
 
 
+@pytest.fixture(autouse=True)
+def _clear_pending_grok() -> None:
+    credentials_routes._pending_grok.clear()
+    yield
+    credentials_routes._pending_grok.clear()
+
+
 @pytest.fixture()
 def cred_env(monkeypatch):
     monkeypatch.setenv("OMNIGENT_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
@@ -99,6 +106,7 @@ async def test_list_empty(client: httpx.AsyncClient) -> None:
     body = resp.json()
     assert body["credentials"] == []
     assert body["enabled"] is True
+    assert body["grok_enabled"] is True
 
 
 async def test_connect_returns_authorize_url_with_state(client: httpx.AsyncClient) -> None:
@@ -271,3 +279,104 @@ async def test_fetch_github_repos_requests_all_affiliations_sorted_by_pushed() -
     assert request.url.params["affiliation"] == "owner,collaborator,organization_member"
     assert request.url.params["sort"] == "pushed"
     assert request.url.params["per_page"] == "100"
+
+
+@respx.mock
+async def test_grok_connect_returns_user_code_not_device_code(
+    client: httpx.AsyncClient,
+) -> None:
+    respx.post("https://auth.x.ai/oauth2/device/code").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "device_code": "secret-device",
+                "user_code": "WXYZ-9876",
+                "verification_uri": "https://auth.x.ai/device",
+                "expires_in": 600,
+                "interval": 5,
+            },
+        )
+    )
+    resp = await client.post("/v1/credentials/grok/connect")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_code"] == "WXYZ-9876"
+    assert body["verification_uri"] == "https://auth.x.ai/device"
+    assert "device_code" not in body
+
+
+@respx.mock
+async def test_grok_poll_stores_session(
+    client: httpx.AsyncClient, credential_store: CredentialStore
+) -> None:
+    respx.post("https://auth.x.ai/oauth2/device/code").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "device_code": "secret-device",
+                "user_code": "WXYZ-9876",
+                "verification_uri": "https://auth.x.ai/device",
+                "expires_in": 600,
+                "interval": 5,
+            },
+        )
+    )
+    respx.post("https://auth.x.ai/oauth2/token").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "access_token": "hdr.eyJlbWFpbCI6ImFsaWNlQHguYWkifQ.sig",
+                "refresh_token": "refresh-1",
+                "expires_in": 3600,
+            },
+        )
+    )
+    assert (await client.post("/v1/credentials/grok/connect")).status_code == 200
+    resp = await client.post("/v1/credentials/grok/poll")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "connected"
+    cred = credential_store.get(_USER, "grok")
+    assert cred is not None
+    blob = credential_store.decrypt_token(cred)
+    assert blob is not None
+    assert "refresh-1" in blob
+    listed = await client.get("/v1/credentials")
+    providers = {c["provider"] for c in listed.json()["credentials"]}
+    assert "grok" in providers
+
+
+@respx.mock
+async def test_grok_poll_pending_keeps_waiting(client: httpx.AsyncClient) -> None:
+    respx.post("https://auth.x.ai/oauth2/device/code").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "device_code": "secret-device",
+                "user_code": "WXYZ-9876",
+                "verification_uri": "https://auth.x.ai/device",
+                "expires_in": 600,
+                "interval": 5,
+            },
+        )
+    )
+    respx.post("https://auth.x.ai/oauth2/token").mock(
+        return_value=httpx.Response(400, json={"error": "authorization_pending"})
+    )
+    assert (await client.post("/v1/credentials/grok/connect")).status_code == 200
+    resp = await client.post("/v1/credentials/grok/poll")
+    assert resp.json()["status"] == "pending"
+
+
+async def test_grok_poll_without_connect_is_expired(client: httpx.AsyncClient) -> None:
+    resp = await client.post("/v1/credentials/grok/poll")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "expired"
+
+
+async def test_disconnect_grok(
+    client: httpx.AsyncClient, credential_store: CredentialStore
+) -> None:
+    credential_store.upsert(_USER, "grok", token="{}", login="alice@x.ai", scopes="")
+    resp = await client.delete("/v1/credentials/grok")
+    assert resp.status_code == 200
+    assert credential_store.get(_USER, "grok") is None

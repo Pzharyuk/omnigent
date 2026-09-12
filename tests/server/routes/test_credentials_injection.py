@@ -65,3 +65,17 @@ async def test_undecryptable_credential_launches_without(monkeypatch, credential
     monkeypatch.setenv("OMNIGENT_CREDENTIAL_ENCRYPTION_KEY", Fernet.generate_key().decode())
     captured = await _provision(monkeypatch, credential_store)
     assert captured["extra_env"] is None
+
+
+async def test_grok_session_injected(monkeypatch, credential_store) -> None:
+    blob = '{"https://auth.x.ai::cli":{"key":"atk"}}'
+    credential_store.upsert(_OWNER, "grok", token=blob, login="alice@x.ai", scopes="openid")
+    captured = await _provision(monkeypatch, credential_store)
+    assert captured["extra_env"] == {"GROK_AUTH_JSON": blob}
+
+
+async def test_github_and_grok_injected_together(monkeypatch, credential_store) -> None:
+    credential_store.upsert(_OWNER, "github", token="gho_x", login="alice", scopes="repo")
+    credential_store.upsert(_OWNER, "grok", token="{}", login="alice@x.ai", scopes="")
+    captured = await _provision(monkeypatch, credential_store)
+    assert captured["extra_env"] == {"GIT_TOKEN": "gho_x", "GROK_AUTH_JSON": "{}"}

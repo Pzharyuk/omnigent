@@ -126,6 +126,13 @@ def test_build_job_manifest_init_container_prepares_and_clones_workspace() -> No
     )
 
 
+def test_init_container_writes_grok_session_file() -> None:
+    """GROK_AUTH_JSON from the per-launch Secret becomes $HOME/.grok/auth.json."""
+    manifest = build_job_manifest(**_MANIFEST_KW)
+    script = _pod_spec(manifest)["initContainers"][0]["command"][2]
+    assert "write_grok_auth_json_from_env" in script
+
+
 def test_build_job_manifest_without_repo_has_no_clone() -> None:
     """No repo → the init container only makes the workspace, no git clone."""
     manifest = build_job_manifest(**_MANIFEST_KW)
@@ -228,7 +235,8 @@ def test_build_job_manifest_without_host_config_has_no_config_write() -> None:
     manifest = build_job_manifest(**_MANIFEST_KW)
     script = _pod_spec(manifest)["initContainers"][0]["command"][2]
     assert "config.yaml" not in script
-    assert "python3 -c" not in script
+    assert "render_host_config_write_command" not in script
+    assert "write_grok_auth_json_from_env" in script
 
 
 def test_build_job_manifest_token_rides_secret_ref_not_the_spec() -> None:

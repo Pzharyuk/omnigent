@@ -59,6 +59,9 @@ const credentialsMocks = vi.hoisted(() => ({
   listCredentials: vi.fn(),
   connectGithub: vi.fn(),
   disconnectGithub: vi.fn(),
+  connectGrok: vi.fn(),
+  pollGrok: vi.fn(),
+  disconnectGrok: vi.fn(),
 }));
 vi.mock("@/lib/credentialsApi", () => credentialsMocks);
 vi.mock("@/lib/identity", () => ({
@@ -1239,6 +1242,10 @@ describe("CredentialsSection", () => {
     credentialsMocks.listCredentials.mockReset();
     credentialsMocks.connectGithub.mockReset();
     credentialsMocks.disconnectGithub.mockReset();
+    credentialsMocks.connectGrok.mockReset();
+    credentialsMocks.pollGrok.mockReset();
+    credentialsMocks.disconnectGrok.mockReset();
+    credentialsMocks.pollGrok.mockResolvedValue({ ok: true, status: "pending" });
   });
 
   it("renders Connect GitHub when nothing is connected and navigates on click", async () => {
@@ -1291,5 +1298,42 @@ describe("CredentialsSection", () => {
     renderPage("/settings/credentials");
     const connect = await screen.findByTestId("settings-credentials-github-connect");
     expect(connect).toBeDisabled();
+  });
+
+  it("starts Grok device-code login and shows the user code", async () => {
+    credentialsMocks.listCredentials.mockResolvedValue({
+      ok: true,
+      credentials: [],
+      enabled: true,
+      grok_enabled: true,
+    });
+    credentialsMocks.connectGrok.mockResolvedValue({
+      ok: true,
+      user_code: "ABCD-1234",
+      verification_uri: "https://auth.x.ai/device",
+      verification_uri_complete: "https://auth.x.ai/device?user_code=ABCD-1234",
+      expires_in: 600,
+      interval: 5,
+    });
+    renderPage("/settings/credentials");
+    fireEvent.click(await screen.findByTestId("settings-credentials-grok-connect"));
+    expect(await screen.findByTestId("settings-credentials-grok-user-code")).toHaveTextContent(
+      "ABCD-1234",
+    );
+    await waitFor(() => expect(credentialsMocks.pollGrok).toHaveBeenCalled());
+  });
+
+  it("shows a connected Grok account and disconnects", async () => {
+    credentialsMocks.listCredentials.mockResolvedValue({
+      ok: true,
+      credentials: [{ provider: "grok", login: "alice@x.ai", scopes: "openid", connected_at: 1 }],
+      enabled: true,
+      grok_enabled: true,
+    });
+    credentialsMocks.disconnectGrok.mockResolvedValue({ ok: true });
+    renderPage("/settings/credentials");
+    expect(await screen.findByText(/Connected as alice@x.ai/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("settings-credentials-grok-disconnect"));
+    await waitFor(() => expect(credentialsMocks.disconnectGrok).toHaveBeenCalled());
   });
 });

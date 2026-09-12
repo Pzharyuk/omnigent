@@ -5345,20 +5345,33 @@ async def _owner_credential_env(
     :param credential_store: The app's credential store, or ``None`` when
         the deployment has none configured.
     :param owner: The launching user, e.g. ``"alice@example.com"``.
-    :returns: ``{"GIT_TOKEN": <token>}`` when the owner has a usable
-        GitHub credential, else ``None`` (today's exact behavior). An
-        undecryptable token (key rotated) logs and launches without.
+    :returns: Env pairs to inject: ``GIT_TOKEN`` when GitHub is connected,
+        ``GROK_AUTH_JSON`` when Grok OAuth is connected. ``None`` when
+        neither is usable. An undecryptable token (key rotated) logs and
+        is omitted.
     """
     if credential_store is None:
         return None
-    cred = await asyncio.to_thread(credential_store.get, owner, "github")
-    if cred is None:
-        return None
-    token = credential_store.decrypt_token(cred)
-    if not token:
-        _logger.warning("github credential for %s is undecryptable — launching without it", owner)
-        return None
-    return {"GIT_TOKEN": token}
+    env: dict[str, str] = {}
+    github = await asyncio.to_thread(credential_store.get, owner, "github")
+    if github is not None:
+        token = credential_store.decrypt_token(github)
+        if token:
+            env["GIT_TOKEN"] = token
+        else:
+            _logger.warning(
+                "github credential for %s is undecryptable — launching without it", owner
+            )
+    grok = await asyncio.to_thread(credential_store.get, owner, "grok")
+    if grok is not None:
+        session = credential_store.decrypt_token(grok)
+        if session:
+            env["GROK_AUTH_JSON"] = session
+        else:
+            _logger.warning(
+                "grok credential for %s is undecryptable — launching without it", owner
+            )
+    return env or None
 
 
 async def _provision_managed_sandbox(

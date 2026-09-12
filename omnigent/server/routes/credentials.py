@@ -24,6 +24,7 @@ import hmac
 import logging
 import os
 import time
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
@@ -51,6 +52,17 @@ _STATE_TTL_S = 600
 # Single-user deployments (no auth provider) store under this sentinel.
 _LOCAL_USER = "local"
 _SETTINGS_PATH = "/settings/credentials"
+
+
+@dataclass
+class _PendingGrok:
+    """In-flight xAI device-code login. Replica count is 1, so memory is enough."""
+
+    device_code: str
+    expires_at: float
+
+
+_pending_grok: dict[str, _PendingGrok] = {}
 
 
 def _client_id() -> str:
@@ -159,17 +171,22 @@ def create_credentials_router(
         """The caller's connected credentials — masked, never the token."""
         user_id = _user(request)
         creds = []
-        cred = credential_store.get(user_id, "github")
-        if cred is not None:
-            creds.append(
-                {
-                    "provider": "github",
-                    "login": cred.login,
-                    "scopes": cred.scopes,
-                    "connected_at": cred.updated_at,
-                }
-            )
-        return {"credentials": creds, "enabled": _feature_enabled()}
+        for provider in ("github", "grok"):
+            cred = credential_store.get(user_id, provider)
+            if cred is not None:
+                creds.append(
+                    {
+                        "provider": cred.provider,
+                        "login": cred.login,
+                        "scopes": cred.scopes,
+                        "connected_at": cred.updated_at,
+                    }
+                )
+        return {
+            "credentials": creds,
+            "enabled": _feature_enabled(),
+            "grok_enabled": credential_encryption_enabled(),
+        }
 
     @router.get("/v1/credentials/github/repos")
     async def list_github_repos(request: Request) -> dict[str, Any]:
@@ -255,6 +272,77 @@ def create_credentials_router(
         """Remove the caller's GitHub credential."""
         user_id = _user(request)
         credential_store.delete(user_id, "github")
+        return {"ok": True}
+
+    @router.post("/v1/credentials/grok/connect")
+    async def connect_grok(request: Request) -> dict[str, Any]:
+        """Start xAI device-code login; the client shows the user code."""
+        user_id = _user(request)
+        if not credential_encryption_enabled():
+            raise OmnigentError("credentials_disabled", code=ErrorCode.CONFLICT)
+        from omnigent.onboarding.xai_oauth import request_device_code
+
+        try:
+            started = await request_device_code()
+        except httpx.HTTPError as exc:
+            logger.warning("xAI device-code start failed for %s", user_id, exc_info=True)
+            raise OmnigentError("grok_connect_failed", code=ErrorCode.INTERNAL_ERROR) from exc
+        _pending_grok[user_id] = _PendingGrok(
+            device_code=started.device_code,
+            expires_at=time.time() + started.expires_in,
+        )
+        return {
+            "user_code": started.user_code,
+            "verification_uri": started.verification_uri,
+            "verification_uri_complete": started.verification_uri_complete,
+            "expires_in": started.expires_in,
+            "interval": started.interval,
+        }
+
+    @router.post("/v1/credentials/grok/poll")
+    async def poll_grok(request: Request) -> dict[str, Any]:
+        """One poll of the in-flight Grok device-code login."""
+        user_id = _user(request)
+        if not credential_encryption_enabled():
+            raise OmnigentError("credentials_disabled", code=ErrorCode.CONFLICT)
+        pending = _pending_grok.get(user_id)
+        if pending is None or time.time() > pending.expires_at:
+            _pending_grok.pop(user_id, None)
+            return {"status": "expired"}
+        from omnigent.onboarding.xai_oauth import (
+            build_grok_auth_json,
+            email_from_access_token,
+            request_tokens,
+        )
+
+        status, payload = await request_tokens(pending.device_code)
+        if status == "pending":
+            return {"status": "pending"}
+        _pending_grok.pop(user_id, None)
+        if status != "complete" or payload is None:
+            return {"status": status}
+        email = email_from_access_token(payload.access_token)
+        blob = build_grok_auth_json(
+            access_token=payload.access_token,
+            refresh_token=payload.refresh_token,
+            expires_in=payload.expires_in,
+            email=email,
+        )
+        credential_store.upsert(
+            user_id,
+            "grok",
+            token=blob,
+            login=email,
+            scopes="openid profile email offline_access grok-cli:access api:access",
+        )
+        return {"status": "connected", "login": email}
+
+    @router.delete("/v1/credentials/grok")
+    async def disconnect_grok(request: Request) -> dict[str, bool]:
+        """Remove the caller's Grok session."""
+        user_id = _user(request)
+        _pending_grok.pop(user_id, None)
+        credential_store.delete(user_id, "grok")
         return {"ok": True}
 
     return router

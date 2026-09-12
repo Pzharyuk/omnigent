@@ -535,6 +535,17 @@ def _render_workspace_prep_command(
     :returns: The ``["bash", "-lc", script]`` command.
     """
     script = f"set -e\nmkdir -p {shlex.quote(workspace)}\n"
+    # Owner Grok OAuth session (Settings → Credentials) rides GROK_AUTH_JSON
+    # on the per-launch Secret. Write it to HOME so grok CLI uses the
+    # subscription instead of a shared XAI_API_KEY. No-op when unset.
+    script += (
+        "python3 -c "
+        + shlex.quote(
+            "from omnigent.onboarding.sandboxes.grok_session import "
+            "write_grok_auth_json_from_env; write_grok_auth_json_from_env()"
+        )
+        + " || true\n"
+    )
     if repo_url is not None and clone_dir is not None:
         # Prefer the owner's per-user credential for the clone: when they've
         # connected GitHub, wire the broker as the sole github.com helper so a

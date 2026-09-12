@@ -107,8 +107,11 @@ import {
 } from "@/lib/githubIntegration";
 import {
   connectGithub,
+  connectGrok,
   disconnectGithub,
+  disconnectGrok,
   listCredentials,
+  pollGrok,
   type CredentialInfo,
 } from "@/lib/credentialsApi";
 import { getCurrentIsAdmin, resolveIdentity } from "@/lib/identity";
@@ -1348,7 +1351,14 @@ function GeneralSection() {
 function CredentialsSection() {
   const [creds, setCreds] = useState<CredentialInfo[] | null>(null);
   const [enabled, setEnabled] = useState(true);
+  const [grokEnabled, setGrokEnabled] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [grokDevice, setGrokDevice] = useState<{
+    user_code: string;
+    verification_uri: string;
+    verification_uri_complete: string | null;
+    interval: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
@@ -1365,6 +1375,7 @@ function CredentialsSection() {
     if (result.ok) {
       setCreds(result.credentials);
       setEnabled(result.enabled);
+      setGrokEnabled(result.grok_enabled ?? result.enabled);
     } else {
       setCreds([]);
       setError(result.error);
@@ -1376,6 +1387,46 @@ function CredentialsSection() {
   }, [refresh]);
 
   const github = creds?.find((c) => c.provider === "github") ?? null;
+  const grok = creds?.find((c) => c.provider === "grok") ?? null;
+
+  useEffect(() => {
+    if (grokDevice === null) return;
+    const intervalMs = Math.max(grokDevice.interval, 2) * 1000;
+    let cancelled = false;
+    const tick = async () => {
+      const result = await pollGrok();
+      if (cancelled) return;
+      if (!result.ok) {
+        setError(result.error);
+        setGrokDevice(null);
+        setBusy(false);
+        return;
+      }
+      if (result.status === "connected") {
+        setGrokDevice(null);
+        setBusy(false);
+        await refresh();
+        return;
+      }
+      if (result.status !== "pending") {
+        setError(
+          result.status === "denied"
+            ? "Grok authorization was denied."
+            : result.status === "expired"
+              ? "The Grok sign-in code expired. Try again."
+              : "Connecting Grok failed.",
+        );
+        setGrokDevice(null);
+        setBusy(false);
+      }
+    };
+    const id = window.setInterval(() => void tick(), intervalMs);
+    void tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [grokDevice, refresh]);
 
   const onConnect = useCallback(async () => {
     setBusy(true);
@@ -1397,6 +1448,40 @@ function CredentialsSection() {
     const result = await disconnectGithub();
     setBusy(false);
     if (result.ok) {
+      await refresh();
+    } else {
+      setError(result.error);
+    }
+  }, [refresh]);
+
+  const onConnectGrok = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    const result = await connectGrok();
+    if (!result.ok) {
+      setBusy(false);
+      setError(
+        result.status === 409
+          ? "Credentials are not configured on this deployment."
+          : result.error,
+      );
+      return;
+    }
+    setGrokDevice({
+      user_code: result.user_code,
+      verification_uri: result.verification_uri,
+      verification_uri_complete: result.verification_uri_complete,
+      interval: result.interval,
+    });
+  }, []);
+
+  const onDisconnectGrok = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    const result = await disconnectGrok();
+    setBusy(false);
+    if (result.ok) {
+      setGrokDevice(null);
       await refresh();
     } else {
       setError(result.error);
@@ -1441,6 +1526,72 @@ function CredentialsSection() {
           </Button>
         )}
       </div>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-medium">Grok</span>
+          <span className="text-sm text-muted-foreground">
+            {grok
+              ? `Connected as ${grok.login}. Your SuperGrok / X Premium+ session is injected into sandbox pods.`
+              : "Sign in with SuperGrok or X Premium+ so Grok Build in your sandboxes uses your subscription."}
+          </span>
+        </div>
+        {creds === null ? null : grok ? (
+          <Button
+            variant="outline"
+            disabled={busy}
+            data-testid="settings-credentials-grok-disconnect"
+            onClick={() => void onDisconnectGrok()}
+          >
+            Disconnect
+          </Button>
+        ) : grokDevice ? (
+          <Button
+            variant="outline"
+            disabled={busy}
+            data-testid="settings-credentials-grok-cancel"
+            onClick={() => {
+              setGrokDevice(null);
+              setBusy(false);
+            }}
+          >
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            disabled={busy || !grokEnabled}
+            data-testid="settings-credentials-grok-connect"
+            onClick={() => void onConnectGrok()}
+          >
+            Connect Grok
+          </Button>
+        )}
+      </div>
+      {grokDevice && (
+        <div
+          className="mt-4 rounded-md border border-border bg-muted/40 p-4"
+          data-testid="settings-credentials-grok-device"
+        >
+          <p className="text-sm text-foreground">
+            Open{" "}
+            <a
+              className="underline"
+              href={grokDevice.verification_uri_complete ?? grokDevice.verification_uri}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {grokDevice.verification_uri}
+            </a>{" "}
+            and enter this code:
+          </p>
+          <p
+            className="mt-2 font-mono text-2xl tracking-widest"
+            data-testid="settings-credentials-grok-user-code"
+          >
+            {grokDevice.user_code}
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Waiting for authorization…</p>
+        </div>
+      )}
     </Section>
   );
 }
