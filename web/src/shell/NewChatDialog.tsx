@@ -162,7 +162,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useOmnigentAnalytics } from "@/lib/analytics";
 import { isCurrentServerLocal } from "@/lib/serverOrigin";
-import { listGithubRepos, type GithubRepoInfo } from "@/lib/credentialsApi";
+import { listGithubRepos } from "@/lib/credentialsApi";
 import {
   isFullySupportedNativeCodingAgent,
   isNativeCodingAgent,
@@ -2639,8 +2639,23 @@ export function NewChatLandingScreen() {
     enabled: githubReposEnabled,
     staleTime: 5 * 60_000,
   });
+  // Per-user GitHub OAuth (Settings → Credentials) is a separate store from
+  // the GitHub App. When the App isn't wired, still offer the picker from
+  // that credential so a fork deploy without the App keeps the repo list.
+  const { data: credentialRepoData } = useQuery({
+    queryKey: ["credentials-github-repos"],
+    queryFn: listGithubRepos,
+    enabled: !githubReposEnabled,
+    staleTime: 5 * 60_000,
+  });
   const sandboxRepoPickerConnected = sandboxRepoData?.connected ?? false;
-  const sandboxRepos = sandboxRepoPickerConnected ? (sandboxRepoData?.repos ?? []) : [];
+  const credentialRepos: GithubRepo[] =
+    credentialRepoData?.ok === true
+      ? credentialRepoData.repos.map((r) => ({ ...r, pushed_at: null }))
+      : [];
+  const sandboxRepos = sandboxRepoPickerConnected
+    ? (sandboxRepoData?.repos ?? [])
+    : credentialRepos;
   const sandboxReposTruncated = sandboxRepoData?.truncated ?? false;
   const [workspace, setWorkspace] = useState<string>(() => restoredDraft?.workspace ?? "");
   // Source tracking for the create's field-omission contract: true while the
@@ -4119,7 +4134,12 @@ export function NewChatLandingScreen() {
   const selectedSandboxRepo = sandboxRepos.find(
     (r) => (r.clone_url ?? `https://github.com/${r.full_name}.git`) === sandboxRepoUrl.trim(),
   );
-  const showGithubRepoPicker = githubReposEnabled && sandboxRepoPickerConnected;
+  const showGithubRepoPicker = sandboxRepos.length > 0;
+  const credentialsNotConnected =
+    !githubReposEnabled &&
+    credentialRepoData !== undefined &&
+    !credentialRepoData.ok &&
+    credentialRepoData.code === "github_not_connected";
   const sandboxRepoLabel = sandboxRepoName
     ? sandboxRepoBranch.trim()
       ? `${sandboxRepoName}#${sandboxRepoBranch.trim()}`
@@ -5679,7 +5699,7 @@ export function NewChatLandingScreen() {
                               its URL below.
                             </p>
                           )}
-                          {selectedSandboxRepo && (
+                          {selectedSandboxRepo && githubReposEnabled && (
                             <SandboxRepoBranchSelect
                               fullName={selectedSandboxRepo.full_name}
                               value={sandboxRepoBranch}
@@ -5701,6 +5721,11 @@ export function NewChatLandingScreen() {
                           data-testid="new-chat-landing-repo-error"
                         >
                           Couldn't load your GitHub repositories. Paste a repository URL below.
+                        </p>
+                      )}
+                      {credentialsNotConnected && (
+                        <p className="text-sm text-muted-foreground">
+                          Connect GitHub in Settings to browse your repos
                         </p>
                       )}
                       <input

@@ -48,6 +48,9 @@
 #   cursor    → vendor installer (cursor.com/install) — always fetches the
 #               latest agent build, so VERSION pins are rejected
 #   kimi      → vendor installer (code.kimi.com/kimi-code/install.sh)
+#   grok      → vendor installer (x.ai/cli/install.sh) — grok is a builtin
+#               ACP harness (omnigent/acp_cli_harnesses.py); a managed
+#               deployment still needs the binary on the host's PATH
 #   agy       → pinned per-arch GitHub release asset + sha256 (AGY_VERSION +
 #               the two AGY_SHA256_* values) — the same control as the default
 #               image, exposed as a row because UBI does not bake agy by default
@@ -83,6 +86,7 @@ BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 # (see install_jcode / install_cursor).
 JCODE_HOME="${JCODE_HOME:-/opt/jcode}"
 CURSOR_HOME="${CURSOR_HOME:-/opt/cursor}"
+GROK_HOME="${GROK_HOME:-/opt/grok}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -227,6 +231,34 @@ install_kimi() { # <version|"">
     verify kimi
 }
 
+install_grok() { # <version|"">
+    local version="$1"
+    # grok's installer writes the binary under $HOME/.grok/downloads and
+    # leaves GROK_BIN_DIR/grok as a symlink into that tree. Redirect HOME
+    # to a shared location (jcode/cursor treatment) and copy the real
+    # binary onto BIN_DIR so a non-root sandbox user can run it.
+    mkdir -p "$GROK_HOME"
+    echo ">> installing grok ${version:-<latest>} via x.ai installer"
+    local -a install_env=(
+        "HOME=$GROK_HOME"
+        "GROK_BIN_DIR=$BIN_DIR"
+    )
+    if [ -n "$version" ]; then
+        curl -fsSL https://x.ai/cli/install.sh | env "${install_env[@]}" bash -s "$version"
+    else
+        curl -fsSL https://x.ai/cli/install.sh | env "${install_env[@]}" bash
+    fi
+    chmod -R a+rX "$GROK_HOME"
+    if [ -e "$BIN_DIR/grok" ]; then
+        cp -L "$BIN_DIR/grok" "$BIN_DIR/.grok.bin"
+        mv "$BIN_DIR/.grok.bin" "$BIN_DIR/grok"
+        chmod 0755 "$BIN_DIR/grok"
+    fi
+    # `agent` is too generic for a shared PATH (cursor has the same issue).
+    rm -f "$BIN_DIR/agent"
+    verify grok
+}
+
 [ $# -gt 0 ] || die "usage: install-harness-cli.sh NAME[@VERSION]... | npm:<pkg-spec>..."
 
 for spec in "$@"; do
@@ -258,6 +290,7 @@ for spec in "$@"; do
             install_cursor
             ;;
         kimi)     install_kimi "$version" ;;
+        grok)     install_grok "$version" ;;
         hermes)
             die "hermes needs Node >= 26 at runtime and the host image ships Node 22 — its installer's managed Node lands in the build user's home. Raise the image's Node baseline first; no EXTRA_HARNESS_CLIS row until then" ;;
         claude)   die "claude ships in the host image by default (unpinned npm install) — pin a different version via the npm: escape hatch: npm:@anthropic-ai/claude-code@<version>" ;;
@@ -266,6 +299,6 @@ for spec in "$@"; do
         kiro | kiro-cli)
             die "$name ships in the host image by default, version-pinned via the KIRO_CLI_VERSION build ARG — override with --build-arg instead" ;;
         *)
-            die "unknown harness CLI '$name' — supported names: opencode, qwen, goose, agy, jcode, cursor, kimi (or npm:<pkg-spec> for a package with no row)" ;;
+            die "unknown harness CLI '$name' — supported names: opencode, qwen, goose, agy, jcode, cursor, kimi, grok (or npm:<pkg-spec> for a package with no row)" ;;
     esac
 done

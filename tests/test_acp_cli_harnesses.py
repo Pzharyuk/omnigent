@@ -218,6 +218,19 @@ def test_catalog_row_spawn_env_builds(name: str) -> None:
     assert env["HARNESS_ACP_OMNIGENT_MCP"] == ("1" if row.omnigent_mcp else "0")
 
 
+def test_grok_spawn_env_forwards_xai_api_key() -> None:
+    """The builtin grok row must pass XAI_API_KEY into the ACP subprocess.
+
+    Managed k8s runner pods cannot run ``grok login --device-auth``; they
+    authenticate with ``XAI_API_KEY`` from the harness Secret. The generic
+    ACP spawn env is deny-by-default, so without this name the grok CLI
+    starts unauthenticated even when the key is in the pod environment.
+    """
+    env = _build_acp_cli_spawn_env(_spec("grok"), harness="grok")
+    names = {n.strip() for n in env.get("HARNESS_ACP_ENV_PASSTHROUGH", "").split(",") if n.strip()}
+    assert "XAI_API_KEY" in names
+
+
 # ---------------------------------------------------------------------------
 # `omni setup` drill-in
 # ---------------------------------------------------------------------------

@@ -78,3 +78,22 @@ def test_extra_cli_rows_match_harness_install_table() -> None:
 
     # goose's default pin mirrors the runtime's minimum supported goose.
     assert f"${{1:-{hi._GOOSE_MIN_VERSION}}}" in script
+
+
+def test_install_harness_cli_script_has_grok_row() -> None:
+    """EXTRA_HARNESS_CLIS=grok must bake the grok CLI onto the shared PATH.
+
+    Grok Build is a builtin ACP harness but is not in the default host
+    image. A managed k8s session fails closed with harness_not_configured
+    unless the operator bakes the CLI in. The installer writes a
+    HOME-relative symlink, so the row must also copy the binary onto
+    BIN_DIR for the non-root sandbox user.
+    """
+    script = (_ROOT / "deploy/docker/install-harness-cli.sh").read_text()
+    assert "install_grok()" in script
+    assert "https://x.ai/cli/install.sh" in script
+    assert "GROK_BIN_DIR" in script
+    assert "grok)" in script or 'grok)' in script
+    assert "unknown harness CLI" in script
+    # The case arm must exist so an unknown-name die doesn't fire for grok.
+    assert "\n        grok)" in script or "\n        grok | " in script

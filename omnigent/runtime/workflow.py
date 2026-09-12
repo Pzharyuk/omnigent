@@ -1581,6 +1581,11 @@ def _build_acp_cli_spawn_env(
     permission_mode = spec.executor.config.get("permission_mode")
     if permission_mode is not None:
         env["HARNESS_ACP_PERMISSION_MODE"] = str(permission_mode)
+    if row.env_passthrough:
+        existing = {
+            n.strip() for n in env.get("HARNESS_ACP_ENV_PASSTHROUGH", "").split(",") if n.strip()
+        }
+        env["HARNESS_ACP_ENV_PASSTHROUGH"] = ",".join(sorted(existing | set(row.env_passthrough)))
     return env
 
 
