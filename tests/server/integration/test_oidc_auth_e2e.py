@@ -266,6 +266,32 @@ async def test_callback_returns_400_on_state_mismatch() -> None:
     assert "State mismatch" in resp.json()["error"]
 
 
+async def test_callback_accepts_first_login_after_overlapping_login() -> None:
+    """A second /auth/login overwrites the state cookie; the first callback still works.
+
+    The SPA can fire two login redirects before the IdP returns. The
+    cookie holds only the latest state; the in-memory PKCE map must
+    still honor the first ``state`` query param.
+    """
+    mock_cm = _mock_httpx_client_for_github()
+    transport = _build_oidc_app()
+
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", follow_redirects=False
+    ) as client:
+        first = await client.get("/auth/login")
+        first_state = parse_qs(urlparse(first.headers["location"]).query)["state"][0]
+        await client.get("/auth/login")
+        with patch("omnigent.server.routes.auth.httpx.AsyncClient", return_value=mock_cm):
+            resp = await client.get(
+                "/auth/callback",
+                params={"code": "auth-code-123", "state": first_state},
+            )
+
+    assert resp.status_code == 302, resp.text
+    assert "ap_session" in resp.cookies
+
+
 async def test_callback_returns_400_on_token_exchange_failure() -> None:
     """GET /auth/callback returns 400 when the IdP token exchange fails."""
     mock_cm = _mock_httpx_client_for_github(

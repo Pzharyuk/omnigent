@@ -217,6 +217,45 @@ def _do_callback(client: TestClient, id_token: str) -> httpx.Response:
     )
 
 
+def test_validate_id_token_sends_jwks_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PyJWKClient must send a non-urllib User-Agent so Cloudflare BIC allows JWKS."""
+    captured: dict[str, object] = {}
+
+    class _FakeClient:
+        def __init__(self, uri: str, **kwargs: object) -> None:
+            captured["uri"] = uri
+            captured["headers"] = kwargs.get("headers")
+
+        def get_signing_key_from_jwt(self, token: str) -> jwt.PyJWK:
+            raise jwt.InvalidTokenError("stop after capturing headers")
+
+    monkeypatch.setattr(jwt, "PyJWKClient", _FakeClient)
+    from omnigent.server.routes import auth as auth_mod
+
+    auth_mod._validate_id_token({"id_token": "not-a-jwt"}, _oidc_config())
+    headers = captured.get("headers")
+    assert isinstance(headers, dict)
+    assert "Mozilla" in str(headers.get("User-Agent"))
+
+
+def test_validate_id_token_jwks_connection_error_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A JWKS 403 must not 500 the callback — treat it as a failed validation."""
+
+    class _BoomClient:
+        def __init__(self, uri: str, **kwargs: object) -> None:
+            pass
+
+        def get_signing_key_from_jwt(self, token: str) -> jwt.PyJWK:
+            raise jwt.PyJWKClientConnectionError("HTTP Error 403: Forbidden")
+
+    monkeypatch.setattr(jwt, "PyJWKClient", _BoomClient)
+    from omnigent.server.routes import auth as auth_mod
+
+    assert auth_mod._validate_id_token({"id_token": "not-a-jwt"}, _oidc_config()) is None
+
+
 def test_oidc_accepts_es384_id_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Accept a valid token from an IdP that only advertises ES384."""
     private_key = ec.generate_private_key(ec.SECP384R1())

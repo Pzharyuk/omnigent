@@ -47,6 +47,11 @@ _logger = logging.getLogger(__name__)
 _AUTH_STATE_COOKIE_SECURE = "__Host-ap_auth_state"
 _AUTH_STATE_COOKIE_PLAIN = "ap_auth_state"
 _AUTH_STATE_TTL_SECONDS = 300  # 5 minutes
+# PyJWT 2.14's PyJWKClient builds its own urllib opener and ignores the
+# process-wide sitecustomize User-Agent. Cloudflare Browser Integrity
+# Check 403s the default Python-urllib UA, which fails Authentik JWKS
+# fetches on /auth/callback.
+_JWKS_USER_AGENT = "Mozilla/5.0 (compatible; omnigent-server)"
 _CLI_TICKET_TTL_SECONDS = 300  # 5 minutes
 # How long an OIDC invite URL stays redeemable. Matches the accounts
 # provider's default invite window (72h) — long enough to share
@@ -148,6 +153,10 @@ def create_auth_router(
     # In-memory store for CLI login tickets. Tickets are short-lived
     # (5 min) and single-use. Keyed by ticket ID.
     _cli_tickets: dict[str, _CliTicket] = {}
+    # Parallel /auth/login calls (SPA 401 burst) overwrite the single
+    # state cookie. Keep every in-flight PKCE payload keyed by ``state``
+    # so the IdP callback for the first login still verifies.
+    _pending_oidc: dict[str, dict[str, str | int]] = {}
 
     @router.get("/login")
     async def login(request: Request) -> Response:
@@ -200,6 +209,8 @@ def create_auth_router(
             # id_token's auth_time proves the IdP actually re-authenticated
             # after this point (rather than silently reusing its session).
             state_payload["reauth_at"] = int(time.time())
+        _evict_expired_oidc_states(_pending_oidc)
+        _pending_oidc[state] = dict(state_payload)
         state_jwt = jwt.encode(state_payload, config.cookie_secret, algorithm="HS256")
 
         # Build the authorization URL.
@@ -255,27 +266,37 @@ def create_auth_router(
                 content={"error": "Missing code or state parameter"},
             )
 
-        # Verify state from the cookie.
-        state_cookie = request.cookies.get(_state_cookie)
-        if not state_cookie:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Missing auth state cookie"},
-            )
+        # Prefer the in-memory payload for this ``state`` so a later
+        # /auth/login that overwrote the cookie does not CSRF the first
+        # IdP round-trip. Fall back to the signed cookie.
+        _evict_expired_oidc_states(_pending_oidc)
+        pending = _pending_oidc.get(state)
+        state_payload: dict[str, object]
+        if pending is not None:
+            state_payload = dict(pending)
+        else:
+            state_cookie = request.cookies.get(_state_cookie)
+            if not state_cookie:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Missing auth state cookie"},
+                )
 
-        try:
-            state_payload = jwt.decode(state_cookie, config.cookie_secret, algorithms=["HS256"])
-        except jwt.InvalidTokenError:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Invalid or expired auth state"},
-            )
+            try:
+                state_payload = jwt.decode(
+                    state_cookie, config.cookie_secret, algorithms=["HS256"]
+                )
+            except jwt.InvalidTokenError:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Invalid or expired auth state"},
+                )
 
-        if state != state_payload.get("state"):
-            return JSONResponse(
-                status_code=400,
-                content={"error": "State mismatch (possible CSRF)"},
-            )
+            if state != state_payload.get("state"):
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "State mismatch (possible CSRF)"},
+                )
 
         code_verifier = state_payload.get("code_verifier", "")
         # Re-sanitize on the way out: /login sanitizes at ingest, but a
@@ -721,6 +742,17 @@ def _evict_expired_tickets(tickets: dict[str, _CliTicket]) -> None:
         del tickets[k]
 
 
+def _evict_expired_oidc_states(pending: dict[str, dict[str, str | int]]) -> None:
+    """Drop expired in-flight OIDC PKCE payloads.
+
+    :param pending: Mutable ``state`` → payload map from ``/auth/login``.
+    """
+    now = int(time.time())
+    expired = [key for key, payload in pending.items() if int(payload.get("exp", 0)) <= now]
+    for key in expired:
+        del pending[key]
+
+
 def _sanitize_return_to(raw: str | None) -> str:
     """Reduce a caller-supplied ``return_to`` to a safe same-origin path.
 
@@ -868,7 +900,11 @@ def _validate_id_token(
         return None
 
     try:
-        jwks_client = jwt.PyJWKClient(config.jwks_uri)
+        jwks_client = jwt.PyJWKClient(
+            config.jwks_uri,
+            headers={"User-Agent": _JWKS_USER_AGENT},
+            timeout=10,
+        )
         signing_key = jwks_client.get_signing_key_from_jwt(id_token)
         return jwt.decode(
             id_token,
@@ -879,6 +915,9 @@ def _validate_id_token(
         )
     except jwt.InvalidTokenError as exc:
         _logger.warning("id_token validation failed: %s", exc)
+        return None
+    except jwt.PyJWKClientConnectionError as exc:
+        _logger.warning("id_token validation failed: JWKS fetch error: %s", exc)
         return None
 
 
