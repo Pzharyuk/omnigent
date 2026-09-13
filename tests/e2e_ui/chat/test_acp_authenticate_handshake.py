@@ -16,7 +16,7 @@ mirrors the grok CLI's auth handshake), materializes the launcher with the
 CLI's own generator, opens the session in the web SPA, sends a chat message,
 and asserts the agent's reply renders instead of a turn-failure error pill.
 The reply is only reachable when the client authenticates with the advertised
-non-browser method (``cached_token``) before ``session/new`` — the browser
+non-browser method (``cached_token``) before ``session/new`` succeeds — the browser
 method (``grok.com``) fails in this headless shape, exactly like a headless
 sandbox — so the test fails while the executor skips ``authenticate`` and
 passes once it performs the handshake.
